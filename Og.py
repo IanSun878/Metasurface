@@ -113,7 +113,7 @@ sims = {f"D={D:.3f}": make_unit_cell_sim(D) for D in D_list}  # construct simula
 batch = web.Batch(simulations=sims, verbose=True)
 batch_results = batch.run(path_dir="data")
 
-# extract the complex transmission coefficient
+# extract the complex transmission coefficient1
 
 t = np.zeros(len(D_list), dtype="complex")
 
@@ -140,5 +140,98 @@ ax2.set_xlabel("D ($\mu m$)")
 ax2.set_ylabel("Transmittance")
 plt.show()
 
-import code
-code.interact(local=locals())
+
+R = 50 * lda0  # radius of the designed metalens
+
+# define a grid of cells
+r = np.arange(0, R, P)
+print(f"The number of unit cells is {len(r) ** 2}.")
+X, Y = np.meshgrid(r, r)
+
+theta_i_deg = 0.0   # 入射角（度）
+theta_t_deg = 28.0  # 目標偏折角（度）
+
+theta_i = np.deg2rad(theta_i_deg)
+theta_t = np.deg2rad(theta_t_deg)
+
+# 相位梯度 dPhi/dx
+dphi_dx = (2 * np.pi / lda0) * (n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))  # [rad/μm]
+
+# 以 x 建立線性相位；與你的網格 X, Y 對齊
+phi_map = (dphi_dx * X) % (2 * np.pi)  # 摺回到 [0, 2π)
+
+# plot the desired phase profile
+plt.pcolormesh(X, Y, phi_map, cmap="binary")
+plt.colorbar()
+plt.show()
+
+# create pillar geometries at each cell to follow the desired phase profile
+pillars_geo = []
+D_vals = []
+theta = np.unwrap(np.angle(t))
+for i, x in enumerate(r):
+    for j, y in enumerate(r):
+        if x**2 + y**2 <= R**2 and x >= 0 and y >= 0:
+            D = np.interp(phi_map[i, j], theta, D_list)
+            D_vals.append(D)
+            pillar_geo = td.Box.from_bounds(rmin=(-D/2, -D/2,0), rmax=(D/2,D/2 ,h))
+            pillars_geo.append(pillar_geo)
+
+# create pillar structure
+pillars = td.Structure(geometry=td.GeometryGroup(geometries=pillars_geo), medium=si)
+
+# simulation domain size
+Lx = 2 * R + lda0
+Ly = 2 * R + lda0
+Lz = h + 1.3 * lda0
+
+# grids of the projected field position
+xs_far = np.linspace(-3 * lda0, 3 * lda0, 101)
+ys_far = np.linspace(-3 * lda0, 3 * lda0, 101)
+
+# define a field projection monitor
+monitor_proj = td.FieldProjectionCartesianMonitor(
+    center=[0, 0, h + 0.6 * lda0],
+    size=[td.inf, td.inf, 0],
+    freqs=[freq0],
+    name="focal_plane_proj",
+    proj_axis=2,
+    proj_distance=1,
+    x=xs_far,
+    y=ys_far,
+    custom_origin=(0, 0, 0),
+    far_field_approx=False,
+)
+
+# define the simulation
+sim = td.Simulation(
+    center=(0, 0, Lz / 2 - lda0 / 2),
+    size=(Lx, Ly, Lz),
+    grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
+    structures=[substrate, pillars],
+    sources=[plane_wave],
+    monitors=[monitor_proj],
+    run_time=run_time,
+    boundary_spec=td.BoundarySpec(x=td.Boundary.pml(), y=td.Boundary.pml(), z=td.Boundary.pml()),
+    symmetry=(-1, 1, 0),
+)
+
+fig, ax = plt.subplots(figsize=(7, 7))
+sim.plot(z=h / 2, ax=ax)
+ax.set_xlim(0, R)
+ax.set_ylim(0, R)
+plt.show()
+
+job = web.Job(simulation=sim, task_name="ir_metalens")
+estimated_cost = web.estimate_cost(job.task_id)
+
+sim_data = job.run(path="data/new_tom_metalens_simulation_data.hdf5")
+
+proj_fields = sim_data["focal_plane_proj"].fields_cartesian.sel(f=freq0)
+
+# compute the intensity of the field
+I = np.abs(proj_fields.Ex) ** 2 + np.abs(proj_fields.Ey) ** 2 + np.abs(proj_fields.Ez) ** 2
+
+# plot field distribution
+I.plot(x="x", y="y", cmap="hot")
+plt.show()
