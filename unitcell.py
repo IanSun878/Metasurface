@@ -8,8 +8,8 @@ import tidy3d.web as web
 lda0 = 1.3  # operation wavelength
 freq0 = td.C_0 / lda0  # operation frequency
 
-P = 0.65  # period of the unit cell
-h = 3.6  # height of the pillar
+P = 0.47  # period of the unit cell
+h = 2.6   # height of the pillar
 
 spot_size=1
 
@@ -27,14 +27,14 @@ sio2 = td.Medium(permittivity=n_sio2**2)
 
 # define a function to create pillar given diameter
 def make_unit_cell(D):
-    pillar_geo = td.Box.from_bounds(rmin=(-D/2, -D/2,0), rmax=(D/2,D/2 ,h))
+    pillar_geo = td.Box.from_bounds(rmin=(-D/2, -inf_eff,0), rmax=(D/2,inf_eff ,h))
     pillar = td.Structure(geometry=pillar_geo, medium=si)
 
     return pillar
 
 
 # define geometry
-substrate_geo = td.Box.from_bounds(rmin=(-inf_eff, -inf_eff,-10), rmax=(inf_eff, inf_eff,10))
+substrate_geo = td.Box.from_bounds(rmin=(-inf_eff, -inf_eff,0), rmax=(inf_eff, inf_eff,10))
 substrate = td.Structure(geometry=substrate_geo, medium=sio2)
 
 # add a plane wave source
@@ -105,7 +105,7 @@ sim.plot_grid(y=0, ax=ax)
 ax.set_aspect(0.6)
 plt.show()
 
-D_list = np.linspace(0.05,0.5,11)  # values of pillar diameter to be simulated
+D_list = np.linspace(0.05,0.45,5)  # values of pillar diameter to be simulated
 
 sims = {f"D={D:.3f}": make_unit_cell_sim(D) for D in D_list}  # construct simulation batch
 

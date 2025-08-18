@@ -8,8 +8,8 @@ import tidy3d.web as web
 lda0 = 1.3  # operation wavelength
 freq0 = td.C_0 / lda0  # operation frequency
 
-P = 0.65  # period of the unit cell
-h = 3.6  # height of the pillar
+P = 0.47  # period of the unit cell
+h = 2.6  # height of the pillar
 
 spot_size=1
 
@@ -27,21 +27,21 @@ sio2 = td.Medium(permittivity=n_sio2**2)
 
 # define a function to create pillar given diameter
 def make_unit_cell(D):
-    pillar_geo = td.Box.from_bounds(rmin=(-D/2, -D/2,0), rmax=(D/2,D/2 ,h))
+    pillar_geo = td.Box.from_bounds(rmin=(-D/2, -inf_eff,0), rmax=(D/2,inf_eff ,h))
     pillar = td.Structure(geometry=pillar_geo, medium=si)
 
     return pillar
 
 
 # define geometry
-substrate_geo = td.Box.from_bounds(rmin=(-inf_eff, -inf_eff,-10), rmax=(inf_eff, inf_eff,10))
+substrate_geo = td.Box.from_bounds(rmin=(-inf_eff, -inf_eff,0), rmax=(inf_eff, inf_eff,10))
 substrate = td.Structure(geometry=substrate_geo, medium=sio2)
 
 # add a plane wave source
 plane_wave = td.PlaneWave(
     source_time=td.GaussianPulse(freq0=freq0, fwidth=freq0 / 10),
     size=(td.inf, td.inf, 0),
-    center=(0, 0, -0.5 * lda0),
+    center=(0, 0, -0.3 * lda0),
     direction="+",
 )
 
@@ -55,6 +55,17 @@ gaussian_source = td.GaussianBeam(
     angle_theta = 0, 
     pol_angle = 0, 
     waist_radius = inf_eff / 2, 
+)
+
+fiber_source = td.ModeSource(
+    size=(10, 10, 0),                 # 橫截面範圍，比光纖大一點
+    center=(0, 0, -0.5 * lda0),             # 光纖輸出口位置
+    source_time=td.GaussianPulse(freq0=freq0, fwidth=freq0/10),
+    direction="+", 
+    mode_spec=td.ModeSpec(
+        num_modes=1,                  # 抽取一個模式
+        target_neff=n_sio2,           # 目標有效折射率
+    )
 )
 
 # define a diffraction monitor to calculate the transmission coefficient
@@ -105,7 +116,7 @@ sim.plot_grid(y=0, ax=ax)
 ax.set_aspect(0.6)
 plt.show()
 
-D_list = np.linspace(0.05,0.5,11)  # values of pillar diameter to be simulated
+D_list = np.linspace(0.05,0.45,5)  # values of pillar diameter to be simulated
 
 sims = {f"D={D:.3f}": make_unit_cell_sim(D) for D in D_list}  # construct simulation batch
 
@@ -141,12 +152,12 @@ ax2.set_ylabel("Transmittance")
 plt.show()
 
 
-R = 50 * lda0  # radius of the designed metalens
+R = 10  # radius of the designed metalens
 
 # define a grid of cells
-r = np.arange(0, R, P)
+r = np.arange(-R, R, P)
 print(f"The number of unit cells is {len(r) ** 2}.")
-X, Y = np.meshgrid(r, r)
+X ,Y= np.meshgrid(r, r, indexing='ij')
 
 theta_i_deg = 0.0   # 入射角（度）
 theta_t_deg = 28.0  # 目標偏折角（度）
@@ -158,6 +169,7 @@ theta_t = np.deg2rad(theta_t_deg)
 dphi_dx = (2 * np.pi / lda0) * (n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))  # [rad/μm]
 
 # 以 x 建立線性相位；與你的網格 X, Y 對齊
+
 phi_map = (dphi_dx * X) % (2 * np.pi)  # 摺回到 [0, 2π)
 
 # plot the desired phase profile
@@ -169,12 +181,14 @@ plt.show()
 pillars_geo = []
 D_vals = []
 theta = np.unwrap(np.angle(t))
-for i, x in enumerate(r):
-    for j, y in enumerate(r):
-        if x**2 + y**2 <= R**2 and x >= 0 and y >= 0:
+for i in range(len(r)):
+    x = r[i]
+    for j in range(len(r)):
+        y = r[j]
+        if x<=R and y<=R:
             D = np.interp(phi_map[i, j], theta, D_list)
             D_vals.append(D)
-            pillar_geo = td.Box.from_bounds(rmin=(-D/2, -D/2,0), rmax=(D/2,D/2 ,h))
+            pillar_geo = td.Box.from_bounds( rmin=(x - D/2, - inf_eff, 0), rmax=(x + D/2,inf_eff, h))
             pillars_geo.append(pillar_geo)
 
 # create pillar structure
@@ -183,18 +197,18 @@ pillars = td.Structure(geometry=td.GeometryGroup(geometries=pillars_geo), medium
 # simulation domain size
 Lx = 2 * R + lda0
 Ly = 2 * R + lda0
-Lz = h + 1.3 * lda0
+Lz = h + 6 * lda0
 
 # grids of the projected field position
 xs_far = np.linspace(-3 * lda0, 3 * lda0, 101)
 ys_far = np.linspace(-3 * lda0, 3 * lda0, 101)
 
 # define a field projection monitor
-monitor_proj = td.FieldProjectionCartesianMonitor(
-    center=[0, 0, h + 0.6 * lda0],
+monitor1 = td.FieldProjectionCartesianMonitor(
+    center=[0, 0, h + 3 * lda0],
     size=[td.inf, td.inf, 0],
     freqs=[freq0],
-    name="focal_plane_proj",
+    name="focal_plane1",
     proj_axis=2,
     proj_distance=1,
     x=xs_far,
@@ -203,31 +217,57 @@ monitor_proj = td.FieldProjectionCartesianMonitor(
     far_field_approx=False,
 )
 
+monitor2 = td.FieldProjectionCartesianMonitor(
+    center=[0, 0, h + 4 * lda0],
+    size=[td.inf, td.inf, 0],
+    freqs=[freq0],
+    name="focal_plane2",
+    proj_axis=2,
+    proj_distance=1,
+    x=xs_far,
+    y=ys_far,
+    custom_origin=(0, 0, 0),
+    far_field_approx=False,
+)
+
+# === 新增：兩個垂直切面場監視器（中心穿過鏡面） ===
+monitor_xz = td.FieldMonitor(
+    name="xz_cut",
+    center=(0, 0, Lz/2 - lda0/2),   # 與模擬盒中心一致
+    size=(Lx, 0, Lz - 0.2*lda0),               # x-z 平面（y 厚度為 0）
+    freqs=[freq0],
+    fields=["Ex", "Ey", "Ez"],
+)
+
+monitor_yz = td.FieldMonitor(
+    name="yz_cut",
+    center=(0, 0, Lz/2 - lda0/2),
+    size=(0, Ly, Lz- 0.2*lda0),               # y-z 平面（x 厚度為 0）
+    freqs=[freq0],
+    fields=["Ex", "Ey", "Ez"],
+)
+
+
 # define the simulation
 sim = td.Simulation(
     center=(0, 0, Lz / 2 - lda0 / 2),
     size=(Lx, Ly, Lz),
     grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
     structures=[substrate, pillars],
-    sources=[plane_wave],
-    monitors=[monitor_proj],
+    sources=[fiber_source],
+    monitors=[monitor1,monitor2, monitor_xz, monitor_yz],
     run_time=run_time,
     boundary_spec=td.BoundarySpec(x=td.Boundary.pml(), y=td.Boundary.pml(), z=td.Boundary.pml()),
-    symmetry=(-1, 1, 0),
 )
 
-fig, ax = plt.subplots(figsize=(7, 7))
-sim.plot(z=h / 2, ax=ax)
-ax.set_xlim(0, R)
-ax.set_ylim(0, R)
-plt.show()
 
 job = web.Job(simulation=sim, task_name="ir_metalens")
 estimated_cost = web.estimate_cost(job.task_id)
 
 sim_data = job.run(path="data/new_tom_metalens_simulation_data.hdf5")
 
-proj_fields = sim_data["focal_plane_proj"].fields_cartesian.sel(f=freq0)
+
+proj_fields = sim_data["focal_plane1"].fields_cartesian.sel(f=freq0)
 
 # compute the intensity of the field
 I = np.abs(proj_fields.Ex) ** 2 + np.abs(proj_fields.Ey) ** 2 + np.abs(proj_fields.Ez) ** 2
@@ -235,3 +275,12 @@ I = np.abs(proj_fields.Ex) ** 2 + np.abs(proj_fields.Ey) ** 2 + np.abs(proj_fiel
 # plot field distribution
 I.plot(x="x", y="y", cmap="hot")
 plt.show()
+
+
+proj_fields = sim_data["focal_plane2"].fields_cartesian.sel(f=freq0)
+# compute the intensity of the field
+I = np.abs(proj_fields.Ex) ** 2 + np.abs(proj_fields.Ey) ** 2 + np.abs(proj_fields.Ez) ** 2
+# plot field distribution
+I.plot(x="x", y="y", cmap="hot")
+plt.show()
+
