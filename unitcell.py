@@ -8,8 +8,8 @@ import tidy3d.web as web
 lda0 = 1.3  # operation wavelength
 freq0 = td.C_0 / lda0  # operation frequency
 
-P = 0.47  # period of the unit cell
-h = 2.6   # height of the pillar
+P = 0.38  # period of the unit cell
+h = 2.8   # height of the pillar
 
 spot_size=1
 
@@ -105,7 +105,7 @@ sim.plot_grid(y=0, ax=ax)
 ax.set_aspect(0.6)
 plt.show()
 
-D_list = np.linspace(0.05,0.45,5)  # values of pillar diameter to be simulated
+D_list = np.linspace(0.05,0.35,6)  # values of pillar diameter to be simulated
 
 sims = {f"D={D:.3f}": make_unit_cell_sim(D) for D in D_list}  # construct simulation batch
 
