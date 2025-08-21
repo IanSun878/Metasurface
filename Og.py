@@ -57,15 +57,15 @@ gaussian_source = td.GaussianBeam(
     waist_radius = inf_eff / 2, 
 )
 
+
+mode_spec = td.ModeSpec(num_modes=1, target_neff=n_sio2)
 fiber_source = td.ModeSource(
-    size=(10, 10, 0),                 # 橫截面範圍，比光纖大一點
-    center=(0, 0, -0.5 * lda0),             # 光纖輸出口位置
+    center=(0, 0, -0.5 * lda0),
+    size=(5 * 1.5, 5 * 1.5, 0),
     source_time=td.GaussianPulse(freq0=freq0, fwidth=freq0/10),
-    direction="+", 
-    mode_spec=td.ModeSpec(
-        num_modes=1,                  # 抽取一個模式
-        target_neff=n_sio2,           # 目標有效折射率
-    )
+    direction="+",
+    mode_spec=mode_spec,
+    mode_index=0,
 )
 
 # define a diffraction monitor to calculate the transmission coefficient
