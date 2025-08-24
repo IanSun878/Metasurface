@@ -8,7 +8,7 @@ lda0 = 1.3  # operation wavelength
 freq0 = td.C_0 / lda0  # operation frequency
 
 theta_i_deg = 0.0   # 入射角（度）
-theta_t_deg = 28.0  # 目標偏折角（度）
+theta_t_deg = 60.0  # 目標偏折角（度）
 theta_i = np.deg2rad(theta_i_deg)
 theta_t = np.deg2rad(theta_t_deg)
 
@@ -21,7 +21,7 @@ si = td.Medium(permittivity=n_si**2)
 n_sio2 = 1.4469  # refractive index of sio2
 sio2 = td.Medium(permittivity=n_sio2**2)
 
-Number=5 #一個周期內有幾個unitcell
+Number=6 #一個周期內有幾個unitcell
 P=lda0/(n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))/Number  # period of the unit cell
 
 h = 2.8  # height of the pillar
@@ -29,14 +29,14 @@ spot_size=10.4
 
 # define a function to create pillar given diameter
 def make_unit_cell(D):
-    pillar_geo = td.Box.from_bounds(rmin=(-D/2, -inf_eff,0), rmax=(D/2,inf_eff ,h))
+    pillar_geo = td.Box.from_bounds(rmin=(-D/2, -td.inf,0), rmax=(D/2,td.inf ,h))
     pillar = td.Structure(geometry=pillar_geo, medium=si)
 
     return pillar
 
 
 # define geometry
-substrate_geo = td.Box.from_bounds(rmin=(-inf_eff, -inf_eff,0), rmax=(inf_eff, inf_eff,10))
+substrate_geo = td.Box.from_bounds(rmin=(-td.inf, -td.inf,0), rmax=(td.inf, td.inf,10))
 substrate = td.Structure(geometry=substrate_geo, medium=sio2)
 
 # add a plane wave source
@@ -147,7 +147,7 @@ dphi_dx = (2 * np.pi / lda0) * (n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i)) 
 
 # 以 x 建立線性相位；與你的網格 X, Y 對齊
 
-phi_map = (dphi_dx * r) % (2 * np.pi)  # 摺回到 [0, 2π)
+phi_map = (dphi_dx * r) % (-2 * np.pi) + np.pi  # 摺回到 [0, 2π)
 
 # create pillar geometries at each cell to follow the desired phase profile
 pillars_geo = []
@@ -157,16 +157,18 @@ theta = np.unwrap(np.angle(t))
 for i in range(len(r)):
     D = np.interp(phi_map[i], theta, D_list)
     D_vals.append(D)
-    pillar_geo = td.Box.from_bounds( rmin=(r[i] - D/2, - inf_eff, 0), rmax=(r[i] + D/2,inf_eff, h))
+    pillar_geo = td.Box.from_bounds( rmin=(r[i] - D/2, - td.inf, 0), rmax=(r[i] + D/2,td.inf, h))
     pillars_geo.append(pillar_geo)
+
+print(D_vals)
 
 # create pillar structure
 pillars = td.Structure(geometry=td.GeometryGroup(geometries=pillars_geo), medium=si)
 
 # simulation domain size
-Lx = 2 * R + lda0
-Ly = 2 * R + lda0
-Lz = h + 6 * lda0
+Lx = 2 * R + 2 * lda0
+Ly = 2 * R + 2 * lda0
+Lz = h + 8 * lda0
 
 # grids of the projected field position
 xs_far = np.linspace(-3 * lda0, 3 * lda0, 101)
@@ -231,7 +233,7 @@ monitor_yz = td.FieldMonitor(
 
 # define the simulation
 sim = td.Simulation(
-    center=(0, 0, Lz / 2 - lda0 / 2),
+    center=(0, 0, Lz / 2 - lda0),
     size=(Lx, Ly, Lz),
     grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
     structures=[substrate, pillars],
