@@ -8,7 +8,7 @@ lda0 = 1.3  # operation wavelength
 freq0 = td.C_0 / lda0  # operation frequency
 
 theta_i_deg = 0.0   # 入射角（度）
-theta_t_deg = 28.0  # 目標偏折角（度）
+theta_t_deg = 60.0  # 目標偏折角（度）
 theta_i = np.deg2rad(theta_i_deg)
 theta_t = np.deg2rad(theta_t_deg)
 
@@ -21,15 +21,15 @@ si = td.Medium(permittivity=n_si**2)
 n_sio2 = 1.4469  # refractive index of sio2
 sio2 = td.Medium(permittivity=n_sio2**2)
 
-Number=6 #一個周期內有幾個unitcell
+Number=5 #一個周期內有幾個unitcell
 P=lda0/(n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))/Number  # period of the unit cell
 
 h = 2.8  # height of the pillar
 spot_size=10.4
 
-#D_list = np.linspace(0.05,P,21)  # 取粗略的D
+D_list = np.linspace(0.05,P,21)  # 取粗略的D
 
-D_list = np.array([0.06036066, 0.13805279, 0.18370165, 0.21907188, 0.25089620, 0.28043548]) #內插之後的D
+#D_list = np.array([0.06036066, 0.13805279, 0.18370165, 0.21907188, 0.25089620, 0.28043548]) #內插之後的D
 
 # define a function to create pillar given diameter
 def make_unit_cell(D):
@@ -163,7 +163,7 @@ for i, x in enumerate(r):
         pillar_geo = td.Box.from_bounds( rmin=(x - D/2, y - D/2, 0), rmax=(x + D/2,y + D/2, h))
         pillars_geo.append(pillar_geo)
 
-#print(D_vals)
+print(D_vals)
 
 # create pillar structure
 pillars = td.Structure(geometry=td.GeometryGroup(geometries=pillars_geo), medium=si)
