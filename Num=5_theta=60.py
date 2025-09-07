@@ -8,7 +8,7 @@ lda0 = 1.3  # operation wavelength
 freq0 = td.C_0 / lda0  # operation frequency
 
 theta_i_deg = 0.0   # 入射角（度）
-theta_t_deg = 60.0  # 目標偏折角（度）
+theta_t_deg = 28.0  # 目標偏折角（度）
 theta_i = np.deg2rad(theta_i_deg)
 theta_t = np.deg2rad(theta_t_deg)
 

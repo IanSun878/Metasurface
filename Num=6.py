@@ -177,29 +177,34 @@ Lz = h + 6 * lda0
 xs_far = np.linspace(-3 * lda0, 3 * lda0, 101)
 ys_far = np.linspace(-3 * lda0, 3 * lda0, 101)
 
-monitor1 = td.FieldMonitor(
-    name="plane1",
-    center=[0, 0, -0.4 * lda0],     # 就是要量測的 z 位置
-    size=[td.inf, td.inf, 0],       # x–y 平面
+# --- 1) 刪掉原來的 plane1/2/3 三個 FieldMonitor，換成這個投影監視器 ---
+xs_far = np.linspace(-3 * lda0, 3 * lda0, 301)
+ys_far = np.linspace(-3 * lda0, 3 * lda0, 301)
+
+far20 = td.FieldProjectionCartesianMonitor(
+    name="far20um",
+    center=[0, 0, h + 0.6 * lda0],   # 近場取樣平面，放在結構上方一點點即可
+    size=[td.inf, td.inf, 0],        # 在 x–y 平面上取樣
     freqs=[freq0],
-    fields=["Ex", "Ey", "Ez"],
+    proj_axis=2,                     # 沿 z 軸投影
+    proj_distance=20.0,              # ★ 投影到上方 20 µm 的平面
+    x=xs_far,                        # 投影平面的取樣座標
+    y=ys_far,
+    far_field_approx=False           # ★ 使用幾何遠場近似（速度快）
 )
 
-monitor2 = td.FieldMonitor(
-    name="plane2",
-    center=[0, 0, h + 2 * lda0],
-    size=[td.inf, td.inf, 0],
+far30 = td.FieldProjectionCartesianMonitor(
+    name="far30um",
+    center=[0, 0, h + 0.6 * lda0],   # 近場取樣平面，放在結構上方一點點即可
+    size=[td.inf, td.inf, 0],        # 在 x–y 平面上取樣
     freqs=[freq0],
-    fields=["Ex", "Ey", "Ez"],
+    proj_axis=2,                     # 沿 z 軸投影
+    proj_distance=30.0,              # ★ 投影到上方 20 µm 的平面
+    x=xs_far,                        # 投影平面的取樣座標
+    y=ys_far,
+    far_field_approx=False           # ★ 使用幾何遠場近似（速度快）
 )
 
-monitor3 = td.FieldMonitor(
-    name="plane3",
-    center=[0, 0, h + 4 * lda0],
-    size=[td.inf, td.inf, 0],
-    freqs=[freq0],
-    fields=["Ex", "Ey", "Ez"],
-)
 # === 新增：兩個垂直切面場監視器（中心穿過鏡面） ===
 monitor_xz = td.FieldMonitor(
     name="xz_cut",
@@ -225,7 +230,7 @@ sim = td.Simulation(
     grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
     structures=[substrate, pillars],
     sources=[gaussian_source],
-    monitors=[monitor1,monitor2, monitor3,monitor_xz, monitor_yz],
+    monitors=[far20,far30,monitor_xz, monitor_yz],
     run_time=run_time,
     boundary_spec=td.BoundarySpec(x=td.Boundary.pml(), y=td.Boundary.pml(), z=td.Boundary.pml()),
 )
@@ -234,22 +239,9 @@ sim = td.Simulation(
 job = web.Job(simulation=sim, task_name="ir_metalens")
 estimated_cost = web.estimate_cost(job.task_id)
 
-sim_data = job.run(path="data/new_tom_metalens_simulation_data.hdf5")
-
-Plane1=sim_data["plane1"]
-I1 = np.abs(Plane1.Ex)**2 + np.abs(Plane1.Ey)**2 + np.abs(Plane1.Ez)**2
-I1.plot(x="x", y="y", cmap="hot")
-plt.title(f"Number={Number} Theta_t={theta_t_deg}")
-plt.show()
-
-Plane2=sim_data["plane2"]
-I2 = np.abs(Plane2.Ex)**2 + np.abs(Plane2.Ey)**2 + np.abs(Plane2.Ez)**2
-I2.plot(x="x", y="y", cmap="hot")
-plt.title(f"Number={Number} Theta_t={theta_t_deg}")
-plt.show()
-
-Plane3=sim_data["plane3"]
-I3 = np.abs(Plane3.Ex)**2 + np.abs(Plane3.Ey)**2 + np.abs(Plane3.Ez)**2
-I3.plot(x="x", y="y", cmap="hot")
-plt.title(f"Number={Number} Theta_t={theta_t_deg}")
+# --- 3) 讀取與繪圖：投影到 20 µm 處的場 ---
+proj_fields = sim_data["far20um"]
+I20 = np.abs(proj_fields.Ex)**2 + np.abs(proj_fields.Ey)**2 + np.abs(proj_fields.Ez)**2
+I20.plot(x="x", y="y", cmap="hot")
+plt.title(f"Far-field at z = +20 µm (Number={Number}, θ_t={theta_t_deg}°)")
 plt.show()
