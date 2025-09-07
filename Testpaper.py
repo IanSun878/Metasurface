@@ -4,36 +4,44 @@ import matplotlib.pyplot as plt
 import tidy3d as td
 import tidy3d.web as web
 
-lda0 = 1.3  # operation wavelength
+lda0 = 1.55  # operation wavelength
 freq0 = td.C_0 / lda0  # operation frequency
 
 theta_i_deg = 0.0   # 入射角（度）
-theta_t_deg = 28.0  # 目標偏折角（度）
+theta_t_deg = 10.0  # 目標偏折角（度）
 theta_i = np.deg2rad(theta_i_deg)
 theta_t = np.deg2rad(theta_t_deg)
 
 inf_eff = 1e5  # effective infinity
 run_time = 1e-12
 
-n_si = 2.0034 # refractive index of SiN
+n_si = 3.4795 # refractive index of SiN
 si = td.Medium(permittivity=n_si**2)
 
-n_sio2 = 1.4469  # refractive index of sio2
+n_sio2 = 1.4440  # refractive index of sio2
 sio2 = td.Medium(permittivity=n_sio2**2)
 
-Number=6 #一個周期內有幾個unitcell
-P=lda0/(n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))/Number  # period of the unit cell
+Number=5 #一個周期內有幾個unitcell
+P=0.64  # period of the unit cell
 
 h = 2.8  # height of the pillar
 spot_size=10.4
 
-#D_list = np.linspace(0.05,P,21)  # 取粗略的D
-
-D_list = np.array([0.06036066, 0.13805279, 0.18370165, 0.21907188, 0.25089620, 0.28043548]) #內插之後的D
+D_list = np.array([
+    [0.17, 0.26],
+    [0.17, 0.32],
+    [0.18, 0.35],
+    [0.15, 0.44],
+    [0.28, 0.43],
+    [0.22, 0.42],
+    [0.23, 0.47],
+    [0.39, 0.41],
+    [0.52, 0.43]
+])
 
 # define a function to create pillar given diameter
-def make_unit_cell(D):
-    pillar_geo = td.Box.from_bounds(rmin=(-D/2, -D/2,0), rmax=(D/2,D/2 ,h))
+def make_unit_cell(a,b):
+    pillar_geo = td.Box.from_bounds(rmin=(-a/2, -b/2,0), rmax=(a/2,b/2 ,h))
     pillar = td.Structure(geometry=pillar_geo, medium=si)
 
     return pillar
@@ -86,15 +94,15 @@ boundary_spec = td.BoundarySpec(
 )
 
 Lz = h + 6.5 * lda0  # simulation domain size in z direction
-min_steps_per_wvl = 20  # minimum steps per wavelength for the grid
+min_steps_per_wvl = 15  # minimum steps per wavelength for the grid
 
 # define a function to create unit cell simulation given pillar diameter
-def make_unit_cell_sim(D):
+def make_unit_cell_sim(a,b):
     sim = td.Simulation(
         center=(0, 0, Lz / 2 - 1.5 * lda0),
         size=(P, P, Lz),
         grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
-        structures=[substrate,make_unit_cell(D)],
+        structures=[substrate,make_unit_cell(a,b)],
         sources=[plane_wave],
         monitors=[monitor_t,fieldmonitor_1],
         run_time=run_time,
@@ -104,7 +112,7 @@ def make_unit_cell_sim(D):
     return sim
 
 
-sims = {f"D={D:.3f}": make_unit_cell_sim(D) for D in D_list}  # construct simulation batch
+sims = {f"a={a:.3f}_b={b:.3f}": make_unit_cell_sim(a, b) for (a, b) in D_list} # construct simulation batch
 
 # submit simulation batch to the server
 batch = web.Batch(simulations=sims, verbose=True)
@@ -115,27 +123,27 @@ batch_results = batch.run(path_dir="data")
 t = np.zeros(len(D_list), dtype="complex")
 
 for i, D in enumerate(D_list):
-    sim_data = batch_results[f"D={D:.3f}"]
+    sim_data = batch_results[f"a={D[0]:.3f}_b={D[1]:.3f}"]
     t[i] = np.array(sim_data["t"].amps.sel(f=freq0, polarization="p"))[0][0]
 
     # plot the transmission phase
 
+Dsign=[1,2,3,4,5,6,7,8,9]
+
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
 theta = np.unwrap(np.angle(t))
 theta=theta-theta[0]
-ax1.plot(D_list, theta / (2 * np.pi), "o-", linewidth=3, c="blue")
-ax1.set_xlim(np.min(D_list), np.max(D_list))
+ax1.plot(Dsign, theta / (2 * np.pi), "o", linewidth=3, c="blue")
 ax1.set_ylim(0, 1)
 ax1.set_xlabel("D ($\mu m$)")
 ax1.set_ylabel("Transmission phase ($2\pi$)")
 
 # plot the transmittance
-ax2.plot(D_list, np.abs(t), linewidth=3, c="red")
-ax2.set_xlim(np.min(D_list), np.max(D_list))
+ax2.plot(Dsign, np.abs(t), "o", linewidth=3, c="red")
 ax2.set_ylim(0, 1)
 ax2.set_xlabel("D ($\mu m$)")
 ax2.set_ylabel("Transmittance")
-plt.show()
+plt.show()  
 
 
 R = 10  # radius of the designed metalens
@@ -144,26 +152,15 @@ R = 10  # radius of the designed metalens
 r = np.arange(-R, R, P)
 X, Y = np.meshgrid(r, r)
 
-# 相位梯度 dPhi/dx
-dphi_dx = (2 * np.pi / lda0) * (n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))  # [rad/μm]
-
-# 以 x 建立線性相位；與你的網格 X, Y 對齊
-
-phi_map = (dphi_dx * X) % (-2 * np.pi) + np.pi  # 摺回到 [0, 2π)
-
-# create pillar geometries at each cell to follow the desired phase profile
 pillars_geo = []
-D_vals = []
+
 theta = np.unwrap(np.angle(t))
-print(theta)
+
 for i, x in enumerate(r):
     for j, y in enumerate(r):
-        D = np.interp(phi_map[j, i], theta, D_list)
-        D_vals.append(D)
-        pillar_geo = td.Box.from_bounds( rmin=(x - D/2, y - D/2, 0), rmax=(x + D/2,y + D/2, h))
+        pillar_geo = td.Box.from_bounds( rmin=(x - D_list[i%9][0]/2, y - D_list[i%9][1]/2, 0), rmax=(x + D_list[i%9][0]/2,y + D_list[i%9][1]/2, h))
         pillars_geo.append(pillar_geo)
 
-#print(D_vals)
 
 # create pillar structure
 pillars = td.Structure(geometry=td.GeometryGroup(geometries=pillars_geo), medium=si)
@@ -177,34 +174,29 @@ Lz = h + 6 * lda0
 xs_far = np.linspace(-3 * lda0, 3 * lda0, 101)
 ys_far = np.linspace(-3 * lda0, 3 * lda0, 101)
 
-# --- 1) 刪掉原來的 plane1/2/3 三個 FieldMonitor，換成這個投影監視器 ---
-xs_far = np.linspace(-3 * lda0, 3 * lda0, 301)
-ys_far = np.linspace(-3 * lda0, 3 * lda0, 301)
-
-far20 = td.FieldProjectionCartesianMonitor(
-    name="far20um",
-    center=[0, 0, h + 0.6 * lda0],   # 近場取樣平面，放在結構上方一點點即可
-    size=[td.inf, td.inf, 0],        # 在 x–y 平面上取樣
+monitor1 = td.FieldMonitor(
+    name="plane1",
+    center=[0, 0, -0.4 * lda0],     # 就是要量測的 z 位置
+    size=[td.inf, td.inf, 0],       # x–y 平面
     freqs=[freq0],
-    proj_axis=2,                     # 沿 z 軸投影
-    proj_distance=20.0,              # ★ 投影到上方 20 µm 的平面
-    x=xs_far,                        # 投影平面的取樣座標
-    y=ys_far,
-    far_field_approx=False           # ★ 使用幾何遠場近似（速度快）
+    fields=["Ex", "Ey", "Ez"],
 )
 
-far30 = td.FieldProjectionCartesianMonitor(
-    name="far30um",
-    center=[0, 0, h + 0.6 * lda0],   # 近場取樣平面，放在結構上方一點點即可
-    size=[td.inf, td.inf, 0],        # 在 x–y 平面上取樣
+monitor2 = td.FieldMonitor(
+    name="plane2",
+    center=[0, 0, h + 2 * lda0],
+    size=[td.inf, td.inf, 0],
     freqs=[freq0],
-    proj_axis=2,                     # 沿 z 軸投影
-    proj_distance=30.0,              # ★ 投影到上方 20 µm 的平面
-    x=xs_far,                        # 投影平面的取樣座標
-    y=ys_far,
-    far_field_approx=False           # ★ 使用幾何遠場近似（速度快）
+    fields=["Ex", "Ey", "Ez"],
 )
 
+monitor3 = td.FieldMonitor(
+    name="plane3",
+    center=[0, 0, h + 4 * lda0],
+    size=[td.inf, td.inf, 0],
+    freqs=[freq0],
+    fields=["Ex", "Ey", "Ez"],
+)
 # === 新增：兩個垂直切面場監視器（中心穿過鏡面） ===
 monitor_xz = td.FieldMonitor(
     name="xz_cut",
@@ -230,7 +222,7 @@ sim = td.Simulation(
     grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
     structures=[substrate, pillars],
     sources=[gaussian_source],
-    monitors=[far20,far30,monitor_xz, monitor_yz],
+    monitors=[monitor1,monitor2, monitor3,monitor_xz, monitor_yz],
     run_time=run_time,
     boundary_spec=td.BoundarySpec(x=td.Boundary.pml(), y=td.Boundary.pml(), z=td.Boundary.pml()),
 )
@@ -239,9 +231,22 @@ sim = td.Simulation(
 job = web.Job(simulation=sim, task_name="ir_metalens")
 estimated_cost = web.estimate_cost(job.task_id)
 
-# --- 3) 讀取與繪圖：投影到 20 µm 處的場 ---
-proj_fields = sim_data["far20um"]
-I20 = np.abs(proj_fields.Ex)**2 + np.abs(proj_fields.Ey)**2 + np.abs(proj_fields.Ez)**2
-I20.plot(x="x", y="y", cmap="hot")
-plt.title(f"Far-field at z = +20 µm (Number={Number}, θ_t={theta_t_deg}°)")
+sim_data = job.run(path="data/new_tom_metalens_simulation_data.hdf5")
+
+Plane1=sim_data["plane1"]
+I1 = np.abs(Plane1.Ex)**2 + np.abs(Plane1.Ey)**2 + np.abs(Plane1.Ez)**2
+I1.plot(x="x", y="y", cmap="hot")
+plt.title(f"Number={Number} Theta_t={theta_t_deg}")
+plt.show()
+
+Plane2=sim_data["plane2"]
+I2 = np.abs(Plane2.Ex)**2 + np.abs(Plane2.Ey)**2 + np.abs(Plane2.Ez)**2
+I2.plot(x="x", y="y", cmap="hot")
+plt.title(f"Number={Number} Theta_t={theta_t_deg}")
+plt.show()
+
+Plane3=sim_data["plane3"]
+I3 = np.abs(Plane3.Ex)**2 + np.abs(Plane3.Ey)**2 + np.abs(Plane3.Ez)**2
+I3.plot(x="x", y="y", cmap="hot")
+plt.title(f"Number={Number} Theta_t={theta_t_deg}")
 plt.show()
