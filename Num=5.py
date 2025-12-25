@@ -8,7 +8,7 @@ lda0 = 1.3  # operation wavelength
 freq0 = td.C_0 / lda0  # operation frequency
 
 theta_i_deg = 0.0   # 入射角（度）
-theta_t_deg = 60.0  # 目標偏折角（度）
+theta_t_deg = 28.0  # 目標偏折角（度）
 theta_i = np.deg2rad(theta_i_deg)
 theta_t = np.deg2rad(theta_t_deg)
 
@@ -27,9 +27,9 @@ P=lda0/(n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))/Number  # period of the 
 h = 2.8  # height of the pillar
 spot_size=10.4
 
-D_list = np.linspace(0.05,P,21)  # 取粗略的D
+#D_list = np.linspace(0.05,P,21)  # 取粗略的D
 
-#D_list = np.array([    0.11885411,    0.19873241,    0.25270934,    0.29933733,    0.33986720]) #內插之後的D
+D_list = np.array([    0.11885411,    0.19873241,    0.25270934,    0.29933733,    0.33986720]) #內插之後的D
 
 # define a function to create pillar given diameter
 def make_unit_cell(D):
@@ -59,7 +59,7 @@ gaussian_source = td.GaussianBeam(
     source_time = td.GaussianPulse(freq0 = freq0, fwidth = freq0 / 10 ), 
     direction = '+', 
     angle_theta = 0, 
-    pol_angle = np.pi/2, 
+    pol_angle = 1.5707963267948966, 
     waist_radius = spot_size / 2, 
 )
 
@@ -95,7 +95,7 @@ def make_unit_cell_sim(D):
         size=(P, P, Lz),
         grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
         structures=[substrate,make_unit_cell(D)],
-        sources=[gaussian_source],
+        sources=[plane_wave],
         monitors=[monitor_t,fieldmonitor_1],
         run_time=run_time,
         boundary_spec=boundary_spec,  # pml is applied to z direction. x and y directions are periodic
@@ -116,7 +116,7 @@ t = np.zeros(len(D_list), dtype="complex")
 
 for i, D in enumerate(D_list):
     sim_data = batch_results[f"D={D:.3f}"]
-    t[i] = np.array(sim_data["t"].amps.sel(f=freq0, polarization="s"))[0][0]
+    t[i] = np.array(sim_data["t"].amps.sel(f=freq0, polarization="p"))[0][0]
 
     # plot the transmission phase
 
@@ -187,29 +187,19 @@ monitor1 = td.FieldMonitor(
 
 monitor2 = td.FieldMonitor(
     name="plane2",
-    center=[0, 0, h+0.4 * lda0],     # 就是要量測的 z 位置
-    size=[td.inf, td.inf, 0],       # x–y 平面
+    center=[0, 0, h + 2 * lda0],
+    size=[td.inf, td.inf, 0],
     freqs=[freq0],
     fields=["Ex", "Ey", "Ez"],
 )
-# set the points on the observation grid at which fields should be projected
-num_far = 40
-xs_far = 4 * lda0 * np.linspace(-0.5, 0.5, num_far)
-ys_far = 4 * lda0 * np.linspace(-0.5, 0.5, num_far)
 
-# create the k-space far field projection monitor
-monitor_far = td.FieldProjectionKSpaceMonitor(
-    center=[0, 0, Lz/2 - lda0/2],
+monitor3 = td.FieldMonitor(
+    name="plane3",
+    center=[0, 0, h + 4 * lda0],
     size=[td.inf, td.inf, 0],
     freqs=[freq0],
-    name="far_field",
-    ux=list(np.linspace(-0.7, 0.7, 100)),
-    uy=list(np.linspace(-0.7, 0.7, 100)),
-    proj_distance=50 * lda0,
-    proj_axis=2,  # projecting in the +y direction
-    far_field_approx=True,  # use far field approximations
+    fields=["Ex", "Ey", "Ez"],
 )
-
 # === 新增：兩個垂直切面場監視器（中心穿過鏡面） ===
 monitor_xz = td.FieldMonitor(
     name="xz_cut",
@@ -235,7 +225,7 @@ sim = td.Simulation(
     grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
     structures=[substrate, pillars],
     sources=[gaussian_source],
-    monitors=[monitor1,monitor2,monitor_far,monitor_xz, monitor_yz],
+    monitors=[monitor1,monitor2, monitor3,monitor_xz, monitor_yz],
     run_time=run_time,
     boundary_spec=td.BoundarySpec(x=td.Boundary.pml(), y=td.Boundary.pml(), z=td.Boundary.pml()),
 )
@@ -253,39 +243,13 @@ plt.title(f"Number={Number} Theta_t={theta_t_deg}")
 plt.show()
 
 Plane2=sim_data["plane2"]
-I1 = np.abs(Plane2.Ex)**2 + np.abs(Plane2.Ey)**2 + np.abs(Plane2.Ez)**2
-I1.plot(x="x", y="y", cmap="hot")
+I2 = np.abs(Plane2.Ex)**2 + np.abs(Plane2.Ey)**2 + np.abs(Plane2.Ez)**2
+I2.plot(x="x", y="y", cmap="hot")
 plt.title(f"Number={Number} Theta_t={theta_t_deg}")
 plt.show()
 
-far_data = sim_data[monitor_far.name]
-coords = far_data.coords_spherical
-theta = coords["theta"]
-phi = coords["phi"]
-
-# plot
-Etheta = far_data.Etheta.isel(f=0, r=0)
-fig, ax = plt.subplots(1, 1, tight_layout=True, figsize=(7, 5), subplot_kw={"projection": "polar"})
-ax.grid(False)
-# im = ax.pcolormesh(np.squeeze(phi), np.squeeze(theta) * 180 / np.pi, np.abs(Etheta), cmap='RdBu', shading='auto')
-im = ax.pcolormesh(
-    np.squeeze(phi),
-    np.squeeze(theta) * 180 / np.pi,
-    np.abs(Etheta),
-    cmap="RdBu",
-    shading="auto",
-)
-fig.colorbar(im, ax=ax)
-_ = ax.set_xlabel(r"$\phi$ (deg)")
-
-label_position = ax.get_rlabel_position()
-_ = ax.text(
-    np.radians(label_position - 8),
-    ax.get_rmax() / 1.3,
-    "$\\theta$ (deg)",
-    rotation=label_position,
-    ha="center",
-    va="center",
-)
-
+Plane3=sim_data["plane3"]
+I3 = np.abs(Plane3.Ex)**2 + np.abs(Plane3.Ey)**2 + np.abs(Plane3.Ez)**2
+I3.plot(x="x", y="y", cmap="hot")
+plt.title(f"Number={Number} Theta_t={theta_t_deg}")
 plt.show()
