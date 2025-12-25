@@ -26,7 +26,7 @@ air = td.Medium(permittivity=n_air**2)
 Number=6 #一個周期內有幾個unitcell
 P=lda0/(n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))/Number  # period of the unit cell
 
-h = 4  # height of the pillar
+h = 5  # height of the pillar
 
 spot_size=10.4
 
