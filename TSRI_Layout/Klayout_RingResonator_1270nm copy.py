@@ -114,62 +114,12 @@ def HeaterRegionOG(Components, Width , i ):#產生加熱區域，Width為加熱�
 
 
 #-------------產生圖形---------------------
-
-#TOP Bus waveguide
-waveguide(c,TotalLength+90,-45,0,10,0)
-
-#TOP Ring Resonator
-TopRingResonatorComponents = gf.Component()
-Top1 = waveguide(TopRingResonatorComponents,TopLength,L1[0],L1[1],10,0)
-Top2 = TopRingResonatorComponents.add_ref(circle1(TopRadius,10,0)).mirror_x().move((L2[0],L2[1]-waveguide_width/2))
-Top3 = TopRingResonatorComponents.add_ref(circle1(TopRadius,10,0)).move((L2[0]+TopLength,L2[1]-waveguide_width/2))
-Top4 = waveguide(TopRingResonatorComponents,TopLength,L2[0],L2[1],10,0)
-c << TopRingResonatorComponents
-
-#Top Ring Resonator Heater range
-c << HeaterRegionOG(TopRingResonatorComponents, TopRingHeaterWidth , 0)
-
-#BOT Ring Resonator
-BotRingResonatorComponents = gf.Component()
-Bot1 = waveguide(BotRingResonatorComponents,BotLength,L3[0], L3[1],10,0)
-Bot2 = BotRingResonatorComponents.add_ref(circle1(BotRadius,10,0)).mirror_x().move((L4[0],L4[1]-waveguide_width/2))
-Bot3 = BotRingResonatorComponents.add_ref(circle1(BotRadius,10,0)).move((L4[0]+BotLength,L4[1]-waveguide_width/2))
-Bot4 = waveguide(BotRingResonatorComponents,BotLength,L4[0],L4[1],10,0)
-c << BotRingResonatorComponents
-
-
-npoints=5000
-a=14
-#BOT Ring Resonator
-Bot1RingResonatorComponents = gf.Component()
-Bot11 = waveguide(Bot1RingResonatorComponents,BotLength,L3[0], L3[1],a,0)
-Bot21 = Bot1RingResonatorComponents.add_ref(circle1(BotRadius,a,0)).mirror_x().move((L4[0],L4[1]-waveguide_width/2))
-Bot31 = Bot1RingResonatorComponents.add_ref(circle1(BotRadius,a,0)).move((L4[0]+BotLength,L4[1]-waveguide_width/2))
-Bot41 = waveguide(Bot1RingResonatorComponents,BotLength,L4[0],L4[1],a,0)
-c << Bot1RingResonatorComponents
-
-#Bot Ring Resonator Heater range    
-c << HeaterRegionOG(BotRingResonatorComponents, BotRingHeaterWidth , 1)
-
-#BOT Bus waveguide
-waveguide(c,TotalLength+90,-45,L4[1]-gap-waveguide_width,10,0)
-
-c.add_polygon([(L3[0]+BotHeaterChange,L3[1]+BotRingHeaterWidth/2000-waveguide_width/2),(L3[0]+BotLength,L3[1]+BotRingHeaterWidth/2000-waveguide_width/2),(L3[0]+BotLength,L3[1]-BotRingHeaterWidth/2000-waveguide_width/2 ),(L3[0]+BotHeaterChange,L3[1]-BotRingHeaterWidth/2000-waveguide_width/2)], layer=(115, 0))
-
-
-#電極
-electrode(L1[0]-2.5,L1[1]-TopRingHeaterWidth/2000-waveguide_width/2+2.5)
-electrode(L2[0]+TopLength-2.5,L2[1]+TopRingHeaterWidth/2000-waveguide_width/2-2.5)
-electrode(L3[0]+2.5,L3[1]-BotRingHeaterWidth/2000-waveguide_width/2+2.5)
-electrode(L4[0]+BotLength+2.5,L4[1]+BotRingHeaterWidth/2000-waveguide_width/2-2.5)
-
-#避免銳角
-c.add_polygon([(L1[0]-5,L1[1]-TopRingHeaterWidth/2000-waveguide_width/2),(L1[0]-4,L1[1]-TopRingHeaterWidth/2000-waveguide_width/2),(L1[0]-4,L1[1]-TopRingHeaterWidth/2000-waveguide_width/2-1),(L1[0]-5,L1[1]-TopRingHeaterWidth/2000-waveguide_width/2-1)], layer=(115, 0))
+c = gf.components.bend_circular(radius=10, width=waveguide_width,allow_min_radius_violation=True, angle=90, npoints=8000, layer=(10, 0))
 
 #-------------產生圖形---------------------
 
 
 c.plot()
-c.write_gds(f"Ring_{wavelength}.gds")  # Write it to a GDS file. You can open it in klayout.
+c.write_gds(f"Bend(410).gds")  # Write it to a GDS file. You can open it in klayout.
 c.show()  # Show it in klayout.
   # Plot it in jupyter notebook.

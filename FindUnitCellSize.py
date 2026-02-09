@@ -7,7 +7,7 @@ lda0 = 1.3  # operation wavelength
 freq0 = td.C_0 / lda0  # operation frequency
 
 theta_i_deg = 0.0   # 入射角（度）
-theta_t_deg = 30.0  # 目標偏折角（度）
+theta_t_deg = 15.0  # 目標偏折角（度）
 theta_i = np.deg2rad(theta_i_deg)
 theta_t = np.deg2rad(theta_t_deg)
 
@@ -23,7 +23,7 @@ sio2 = td.Medium(permittivity=n_sio2**2)
 n_air = 1 # refractive index of sio2
 air = td.Medium(permittivity=n_air**2)
 
-Number=6 #一個周期內有幾個unitcell
+Number=8 #一個周期內有幾個unitcell
 P=lda0/(n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))/Number  # period of the unit cell
 
 h = 0.9  # height of the pillar
