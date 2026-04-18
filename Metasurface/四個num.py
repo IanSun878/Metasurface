@@ -1,0 +1,265 @@
+
+import numpy as np
+import matplotlib.pyplot as plt
+import tidy3d as td
+import tidy3d.web as web
+
+lda0 = 1.3  # operation wavelength
+freq0 = td.C_0 / lda0  # operation frequency
+
+theta_i_deg = 0.0   # 入射角（度）
+theta_t_deg = 30.0  # 目標偏折角（度）
+theta_i = np.deg2rad(theta_i_deg)
+theta_t = np.deg2rad(theta_t_deg)
+
+inf_eff = 1e5  # effective infinity
+run_time = 1e-12
+
+n_si = 3.5226 # refractive index of SiN
+si = td.Medium(permittivity=n_si**2)
+
+n_sio2 = 1.4469  # refractive index of sio2
+sio2 = td.Medium(permittivity=n_sio2**2)
+
+n_air = 1 # refractive index of sio2
+air = td.Medium(permittivity=n_air**2)
+
+Number=4 #一個周期內有幾個unitcell
+TwoPi=lda0/(n_sio2 * np.sin(theta_t) - 1 * np.sin(theta_i))
+P=TwoPi/Number  # period of the unit cell
+print("P=",P)
+
+h =  0.9# height of the pillar
+spot_size=10.4
+
+
+D_list = np.array([0.2 , 0.24584621, 0.29457617, 0.35982033])
+
+
+# define a function to create pillar given diameter
+def make_unit_cell(D):
+    pillar_geo = td.Box.from_bounds(rmin=(-D/2, -D/2,0), rmax=(D/2,D/2  ,h))
+    pillar = td.Structure(geometry=pillar_geo, medium=si)
+
+    return pillar
+
+
+# define geometry
+substrate_geo = td.Box.from_bounds(rmin=(-td.inf, -td.inf,0), rmax=(td.inf, td.inf,inf_eff))
+substrate = td.Structure(geometry=substrate_geo, medium=sio2)
+
+# add a plane wave source
+plane_wave = td.PlaneWave(
+    source_time=td.GaussianPulse(freq0=freq0, fwidth=freq0 / 10),
+    size=(td.inf, td.inf, 0),
+    center=(0, 0, -0.3 * lda0),
+    pol_angle = np.pi/2,
+    direction="+",
+)
+
+gaussian_source = td.GaussianBeam(
+    name = 'gaussian_source', 
+    center = [0, 0, -0.5*lda0], 
+    size = [ spot_size, spot_size, 0], 
+    source_time = td.GaussianPulse(freq0 = freq0, fwidth = freq0 / 10 ), 
+    direction = '+', 
+    angle_theta = 0, 
+    pol_angle = np.pi/2, 
+    waist_radius = spot_size / 2, 
+)
+
+# define a diffraction monitor to calculate the transmission coefficient
+monitor_t = td.DiffractionMonitor(
+    center=[0, 0, h + 0.1 * lda0], size=[td.inf, td.inf, 0], freqs=[freq0], name="t"
+)
+
+
+fieldmonitor_1 = td.FieldMonitor(
+    name = 'fieldmonitor_1', 
+    center=[0, 0, h/2],
+    size = [0, td.inf, h], 
+    freqs = td.C_0 / 1.3131313131313131, 
+)
+
+
+# define boundary conditions
+boundary_spec = td.BoundarySpec(
+    x=td.Boundary.periodic(),
+    y=td.Boundary.periodic(),
+    z=td.Boundary(minus=td.PML(), plus=td.PML()),
+)
+
+Lz = h + 6.5 * lda0  # simulation domain size in z direction
+min_steps_per_wvl = 20  # minimum steps per wavelength for the grid
+
+# define a function to create unit cell simulation given pillar diameter
+def make_unit_cell_sim(D):
+    sim = td.Simulation(
+        center=(0, 0, Lz / 2 - 1.5 * lda0),
+        size=(P, P, Lz),
+        grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
+        structures=[substrate,make_unit_cell(D)],
+        sources=[plane_wave],
+        monitors=[monitor_t,fieldmonitor_1],
+        run_time=run_time,
+        boundary_spec=boundary_spec,  # pml is applied to z direction. x and y directions are periodic
+    )
+
+    return sim
+
+sims = {f"D={D:.3f}": make_unit_cell_sim(D) for D in D_list}  # construct simulation batch
+
+# submit simulation batch to the server
+batch = web.Batch(simulations=sims, verbose=True)
+batch_results = batch.run(path_dir="data")
+
+# extract the complex transmission coefficient1
+
+t = np.zeros(len(D_list), dtype="complex")
+
+for i, D in enumerate(D_list):
+    sim_data = batch_results[f"D={D:.3f}"]
+    t[i] = np.array(sim_data["t"].amps.sel(f=freq0, polarization="s"))[0][0]
+
+    # plot the transmission phase
+
+#-----------------------------------------------------------------------------------
+
+
+Dsign=np.linspace(1,len(D_list),len(D_list))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+theta = np.unwrap(np.angle(t))
+theta=theta-theta[0]
+print(theta / (2 * np.pi))
+ax1.plot(Dsign, theta / (2 * np.pi), linewidth=3, c="blue")
+ax1.set_ylim(0, 1)
+ax1.set_xlabel("D ($\mu m$)")
+ax1.set_ylabel("Transmission phase ($2\pi$)")
+
+# plot the transmittance
+ax2.plot(Dsign, np.abs(t), "o", linewidth=3, c="red")
+ax2.set_ylim(0, 1)
+ax2.set_xlabel("D ($\mu m$)")
+ax2.set_ylabel("Transmittance")
+plt.show()  
+
+
+#-----------------------------------------------------------------------------------
+
+R = 5.2 # radius of the designed metalens
+
+# define a grid of cells
+r = np.arange(-R, R, P)
+X, Y = np.meshgrid(r, r)
+
+# create pillar geometries at each cell to follow the desired phase profile
+pillars_geo = []
+D_vals = []
+theta = np.unwrap(np.angle(t))
+
+
+for i, x in enumerate(r):
+    for j, y in enumerate(r):
+        pillar_geo = td.Box.from_bounds( rmin=(x - D_list[i%Number]/2, y - D_list[i%Number]/2, 0), rmax=(x + D_list[i%Number]/2,y + D_list[i%Number]/2, h))
+        pillars_geo.append(pillar_geo)
+
+# create pillar structure
+pillars = td.Structure(geometry=td.GeometryGroup(geometries=pillars_geo), medium=si)
+
+# simulation domain size
+Lx =  R*2
+Ly =  R*2
+Lz = h + 6 * lda0
+
+# grids of the projected field position
+xs_far = np.linspace(-3 * lda0, 3 * lda0, 101)
+ys_far = np.linspace(-3 * lda0, 3 * lda0, 101)
+
+monitor1 = td.FieldMonitor(
+    name="plane1",
+    center=[0, 0, -0.4 * lda0],     # 就是要量測的 z 位置
+    size=[td.inf, td.inf, 0],       # x–y 平面
+    freqs=[freq0],
+    fields=["Ex", "Ey", "Ez"],
+)
+
+# set the points on the observation grid at which fields should be projected
+num_far = 40
+xs_far = 4 * lda0 * np.linspace(-0.5, 0.5, num_far)
+ys_far = 4 * lda0 * np.linspace(-0.5, 0.5, num_far)
+
+# create the k-space far field projection monitor
+monitor_far = td.FieldProjectionKSpaceMonitor(
+    center=[0, 0, Lz/2 - lda0/2],
+    size=[td.inf, td.inf, 0],
+    freqs=[freq0],
+    name="far_field",
+    ux=list(np.linspace(-0.7, 0.7, 100)),
+    uy=list(np.linspace(-0.7, 0.7, 100)),
+    proj_distance=2.0,
+    proj_axis=2,  # projecting in the +y direction
+    far_field_approx=True,  # use far field approximations
+)
+
+# === 新增：兩個垂直切面場監視器（中心穿過鏡面） ===
+monitor_xz = td.FieldMonitor(
+    name="xz_cut",
+    center=(0, 0, Lz/2 - lda0/2),   # 與模擬盒中心一致
+    size=(Lx, 0, Lz),               # x-z 平面（y 厚度為 0）
+    freqs=[freq0],
+    fields=["Ex", "Ey", "Ez"],
+)
+
+# define the simulation
+sim = td.Simulation(
+    center=(0, 0, Lz / 2 - lda0),
+    size=(Lx, Ly, Lz),
+    grid_spec=td.GridSpec.auto(min_steps_per_wvl=min_steps_per_wvl, wavelength=lda0),
+    structures=[substrate, pillars],
+    sources=[plane_wave],
+    monitors=[monitor1,monitor_far,monitor_xz],
+    run_time=run_time,
+    boundary_spec=boundary_spec,
+)
+
+job = web.Job(simulation=sim, task_name="ir_metalens")
+estimated_cost = web.estimate_cost(job.task_id)
+
+sim_data = job.run(path="data/new_tom_metalens_simulation_data.hdf5")
+
+
+"""
+far_data = sim_data[monitor_far.name]
+coords = far_data.coords_spherical#圓座標(θ, φ)
+theta = coords["theta"]
+phi = coords["phi"]
+
+# plot
+Etheta = far_data.Etheta.isel(f=0, r=0)#取Etheta在頻率f第0個, r第0個位置的值
+fig, ax = plt.subplots(1, 1, tight_layout=True, figsize=(7, 5), subplot_kw={"projection": "polar"})
+ax.grid(False)
+# im = ax.pcolormesh(np.squeeze(phi), np.squeeze(theta) * 180 / np.pi, np.abs(Etheta), cmap='RdBu', shading='auto')
+im = ax.pcolormesh(
+    np.squeeze(phi),
+    np.squeeze(theta) * 180 / np.pi,
+    np.abs(Etheta),
+    cmap="RdBu",#紅藍漸層
+    shading="auto",#像素邊界與插值方式
+)
+fig.colorbar(im, ax=ax)
+_ = ax.set_xlabel(r"$\phi$ (deg)")
+
+
+#調整label位置
+label_position = ax.get_rlabel_position()
+_ = ax.text(
+    np.radians(label_position - 8),
+    ax.get_rmax() / 1.3,
+    "$\\theta$ (deg)",
+    rotation=label_position,
+    ha="center",
+    va="center",
+)
+
+plt.show()
+"""
