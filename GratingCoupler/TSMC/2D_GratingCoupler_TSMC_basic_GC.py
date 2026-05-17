@@ -2,15 +2,14 @@
 import gdstk
 import matplotlib.pylab as plt
 import numpy as np
-import SimulationTools as st
-
 # Import regular tidy3d.
 import tidy3d as td
 import tidy3d.web as web
 from tidy3d.plugins import waveguide
+import SimulationTools as st
 
 
-def run_2d_gc_paper(X):
+def run_2d_gc_paper(X,Y):
     # Grating coupler 參數
 
     h_clad = 0.295  # Cladding layer thickness (um).
@@ -38,10 +37,11 @@ def run_2d_gc_paper(X):
     n_wl = 101  # Number of wavelength points in monitors.
     run_time = 1e-11  # Run time parameter for simulation (s).
 
-    FF = 0.577
+    FF = X
     n_core = (FF * n_SiN**2 + (1 - FF) * n_sio2**2)**0.5
     Neff = st.Neff(wl, h_gc, n_sio2, n_core, n_sio2)
-    P_GC = 0.944
+    #P_GC = 0.944
+    P_GC = Y
     W_GC = FF * P_GC
 
     # Material definitions.
@@ -66,7 +66,7 @@ def run_2d_gc_paper(X):
     WG_geo = td.Box.from_bounds(rmin=(-1000, -td.inf,h_separation + h_box + h_sub), rmax=(-((wg_l + P_GC * n_p)/2-wg_l), td.inf,h_separation  + h_box + h_sub + h_gc))
     WG = td.Structure(geometry=WG_geo, medium=mat_SiN)
 
-    Box_geo = td.Box.from_bounds(rmin=(-td.inf, -td.inf,-10), rmax=(td.inf, td.inf, h_box + h_sub))
+    Box_geo = td.Box.from_bounds(rmin=(-td.inf, -td.inf,h_sub), rmax=(td.inf, td.inf, h_box + h_sub))
     Box = td.Structure(geometry=Box_geo, medium=mat_box)
 
     Substrate_geo = td.Box.from_bounds(rmin=(-td.inf, -td.inf,-10), rmax=(td.inf, td.inf,h_sub))
@@ -81,7 +81,7 @@ def run_2d_gc_paper(X):
     gaussian_source = td.GaussianBeam(
         name = 'gaussian_source', 
         center = [-((wg_l + P_GC * n_p)/2-wg_l) + src_posX, 0, h_clad + h_gc + h_separation + h_box + h_sub + src_pos], 
-        size = [spot_size,spot_size, 0],
+        size = [spot_size*3, td.inf, 0],
         source_time = td.GaussianPulse(freq0 = freq, fwidth = freqw ), 
         direction = '-', 
         angle_theta = theta_f * np.pi/180, 
@@ -133,44 +133,74 @@ def run_2d_gc_paper(X):
         run_time=run_time,
         boundary_spec=td.BoundarySpec(
             x=td.Boundary.pml(),
-            y=td.Boundary.periodic(),  # Make it periodic in 2D.
+            y=td.Boundary.absorber(),  # Make it periodic in 2D.
             z=td.Boundary.pml(),
             ),
     )
+    return sim
 
-    # 畫出 2D 切面圖
-    sim.plot(y=0)
-    # 💡 修正這裡：加上 .gca()
-    plt.gca().set_aspect("auto")
-    # 💡 如果你有設定標題，也要記得用 plt.title()，而不是 plt.set_title()
-    plt.title("2D")
+    # # 畫出 2D 切面圖
+    # sim.plot(y=0)
+    # # 💡 修正這裡：加上 .gca()
+    # plt.gca().set_aspect("auto")
+    # # 💡 如果你有設定標題，也要記得用 plt.title()，而不是 plt.set_title()
+    # plt.title("2D")
 
-    job = web.Job(simulation=sim, task_name="GC_2D_TSMC_basic_GC")
-    estimated_cost = web.estimate_cost(job.task_id)
-    sim_data = job.run(path="data/gc3d_in_data.hdf5")
+    # job = web.Job(simulation=sim, task_name="GC_2D_TSMC_basic_GC")
+    # estimated_cost = web.estimate_cost(job.task_id)
+    # sim_data = job.run(path="data/gc3d_in_data.hdf5")
 
-    # Coupling Efficiency
-    mode_amps = sim_data["mode_monitor"]
-    coeffs_f = mode_amps.amps.sel(direction="-")
-    power = np.abs(coeffs_f.sel(mode_index=0)) ** 2
-    power_db = 10 * np.log10(power)
-    ce_3d = np.amax(power_db)
-    Percent_CE = power * 100
-    ce_percent_max = np.amax(Percent_CE)
+    # # Coupling Efficiency
+    # mode_amps = sim_data["mode_monitor"]
+    # coeffs_f = mode_amps.amps.sel(direction="-")
+    # power = np.abs(coeffs_f.sel(mode_index=0)) ** 2
+    # power_db = 10 * np.log10(power)
+    # ce_3d = np.amax(power_db)
+    # Percent_CE = power * 100
+    # ce_percent_max = np.amax(Percent_CE)
 
-    return wl_range , power_db, ce_3d ,Percent_CE ,ce_percent_max
-
-
-fig, ax = plt.subplots(tight_layout=True, figsize=(6, 4))
-
-posX_list = np.linspace(0.4,0.6,21)
+    # return wl_range , power_db, ce_3d ,Percent_CE ,ce_percent_max
 
 
-data=run_2d_gc_paper(1)
-ax.plot(data[0], data[3], linewidth=1.0 ,label=f"theta = {1}: Maximum CE: {data[4]:.3f} %")
-ax.set_xlim([1.25, 1.37])
-ax.set_xlabel(r"Wavelength ($\mu m$)")
-ax.set_ylabel("CE (%)")
-ax.legend()
+# fig, ax = plt.subplots(tight_layout=True, figsize=(6, 4))
 
+# posX_list = np.linspace(0.4,0.6,21)
+# data=run_2d_gc_paper(1)
+# ax.plot(data[0], data[3], linewidth=1.0 ,label=f"theta = {1}: Maximum CE: {data[4]:.3f} %")
+# ax.set_xlim([1.25, 1.37])
+# ax.set_xlabel(r"Wavelength ($\mu m$)")
+# ax.set_ylabel("CE (%)")
+# ax.legend()
+
+
+ff_list = np.linspace(0.4,0.6,11)
+P_list = np.linspace(0.889569, 0.939559,11)
+
+sims_2d = {
+    f"ff={X:.6f};P={Y:.6f}": run_2d_gc_paper(X, Y)
+    for X in ff_list
+    for Y in P_list
+}
+
+batch = web.Batch(simulations=sims_2d)
+batch_results = batch.run(path_dir="data")
+
+ce = np.array(
+    [
+        [
+            np.abs(
+                batch_results[f"ff={X:.6f};P={Y:.6f}"]["mode_monitor"]
+                .amps.sel(f=freq, direction="-")
+                .values.item()
+            )
+            ** 2
+            for Y in P_list
+        ]
+        for X in ff_list
+    ]
+)
+
+
+plt.pcolormesh(P_list, ff_list, ce, cmap="bwr")
+plt.colorbar()
 plt.show()

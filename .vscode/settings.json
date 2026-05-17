@@ -1,5 +1,5 @@
 {
-    "tidy3d.preferredInstallationMode": "managed",
-    "tidy3d.preferredInstallation": "Managed Python (uv)",
+    "tidy3d.preferredInstallationMode": "path",
+    "tidy3d.preferredInstallation": "c:\\Users\\Ian\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
     "tidy3d.viewer.tidyVersion": "2.11.0"
 }
