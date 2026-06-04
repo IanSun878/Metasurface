@@ -1,4 +1,4 @@
-# Standard python imports.
+ # Standard python imports.
 import gdstk
 import matplotlib.pylab as plt
 import numpy as np
@@ -26,7 +26,7 @@ def run_2d_gc_paper(X):
 
 
     n_p = 14  # Number of grating elements.
-    spot_size = 10.4  # Single-mode fiber (SMF) spot-size (um).
+    spot_size = 9.2  # Single-mode fiber (SMF) spot-size (um).
     theta_f = 8  # Fiber tilt angle w.r.t the z-axis (degrees).
     src_pos = 6  # Source position w.r.t the position of the first GC line (um).
     src_posX = 4.8
@@ -163,7 +163,7 @@ fig, ax = plt.subplots(tight_layout=True, figsize=(6, 4))
 posX_list = np.linspace(0.1, 0.9, 10)
 
 for posX in posX_list:
-    data=run_2d_gc_paper(posX)
+    data=run_2d_gc_paper(0.52)
     ax.plot(data[0], data[1], linewidth=1.0 ,label=f"posX = {posX}: Maximum CE: {data[2]:.3f} dB")
 ax.set_xlim([1.5, 1.6])
 ax.set_xlabel(r"Wavelength ($\mu m$)")

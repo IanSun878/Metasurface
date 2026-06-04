@@ -29,18 +29,15 @@ source_gap = 0.1  # gap distance between the source and the top oxide
 wg_l = 15  # Output waveguide length (um).
 t_gc = 0.4  # thickness of the silicon layer
 etch_depth = 0.4  # etching depth
-P = 0.944  # grating period
+P = 0.944 # grating period
 ff = 0.577  # filling fraction of the grating
 t_tox = 0.295  # top oxide layer thickness
-# Bragg reflector (BR) 參數，對應 TSMC 檔案
-h_BR = 0.22    # BR 矽層厚度
-P_BR = 0.65    # BR 週期
-W_BR = 0.6    # BR 填空比（Si 寬度 = W_BR * P_BR）
-posX = 0.52    # BR x 軸偏移量
+t_separation = 0.522  # separation between the grating and the slab waveguide
 t_box = 2  # bottom oxide layer thickness
 theta_f = 8  # fiber tilt angle in degrees
 n = 14  # number of grating teeth to create
 theta_air = np.arcsin(n_sio2 * np.sin(np.deg2rad(theta_f)))  # convert fiber tilt angle to radians
+source_x = 5 + np.tan(theta_air) * source_gap  # source position in x direction
 
 theta = theta_air  # fiber tilt angle
 mfd = 9.2  # mode field diameter
@@ -51,16 +48,12 @@ buffer = 0.6 * lda0  # buffer spacing to pad the simulation domain
 w_wg = 0.8  # waveguide width
 w_grating = mfd  # grating width is set to the mode field diameter
 l_taper = 50  # length of the linear taper
-
-# sweep 參數
-t_sep_list = np.linspace(0.5, 2.0, 7)  # separation thickness sweep range (um)
-src_x = 5.2 # source x position (um)
 #endregion
 
 #region 非週期性結構建立
 # create the top oxide layer
 tox = td.Structure(
-    geometry=td.Box.from_bounds(rmin=(-inf_eff, -inf_eff, 0), rmax=(inf_eff, inf_eff, t_gc + t_tox)),
+    geometry=td.Box.from_bounds(rmin=(-inf_eff, -inf_eff, 0), rmax=(inf_eff, inf_eff,t_gc + t_tox)),
     medium=sio2,
 )
 # create the slab waveguide
@@ -78,16 +71,32 @@ etched_waveguide = td.Structure(
     geometry=td.Box.from_bounds(rmin=(0, -inf_eff, 0), rmax=(inf_eff, inf_eff, t_gc - etch_depth)),
     medium=sin,
 )
+# create the separation oxide layer
+separation_oxide = td.Structure(
+    geometry=td.Box.from_bounds(rmin=(-inf_eff, -inf_eff, -t_separation), rmax=(inf_eff, inf_eff, 0)),
+    medium=sio2,
+)
+# create the bottom oxide layer
+box = td.Structure(
+    geometry=td.Box.from_bounds(rmin=(-inf_eff, -inf_eff, -t_separation-t_box), rmax=(inf_eff, inf_eff, -t_separation)),
+    medium=mat_box,
+)
+# create the silicon substrate layer
+substrate = td.Structure(
+    geometry=td.Box.from_bounds(
+        rmin=(-inf_eff, -inf_eff, -inf_eff), rmax=(inf_eff, inf_eff, -t_separation-t_box)
+    ),
+    medium=si,
+)
 #endregion
 
-def make_2d_sim(p: float, source_x: float, t_separation: float, br_extra: float = 0.0) -> td.Simulation:
-    """Function to create a 2D simulation given the grating period, source position, and separation thickness.
-    br_extra: extra length (um) to extend the BR on both the left and right sides."""
+def make_2d_sim(p: float, source_x: float) -> td.Simulation:
+    """Function to create a 2D simulation given the grating period and source position"""
 
     # define a gaussian beam source
     source = td.GaussianBeam(
         size=(2 * mfd, td.inf, 0),
-        center=[source_x, 0, t_tox + t_gc + source_gap],
+        center=[source_x + ff*p, 0, t_tox + t_gc + source_gap],
         source_time=td.GaussianPulse(freq0=freq0, fwidth=fwidth),
         angle_theta=theta,
         direction="-",
@@ -124,35 +133,12 @@ def make_2d_sim(p: float, source_x: float, t_separation: float, br_extra: float 
     # create the grating structure
     gratings = td.Structure(geometry=gratings, medium=sin)
 
-    # create the bragg reflector (BR)
-    x_br0 = -wg_l + posX - br_extra  # 向左延伸 br_extra
-    nBR = int((wg_l + n * p + 2 * br_extra) / P_BR) + 1  # 左右各延伸
-    BRs_geo = []
-    for i in range(nBR):
-        BR_geo = td.Box.from_bounds(
-            rmin=(x_br0 + P_BR * (1 - W_BR), -inf_eff, -t_separation),
-            rmax=(x_br0 + P_BR,              inf_eff, -t_separation + h_BR),
-        )
-        x_br0 += P_BR
-        BRs_geo.append(BR_geo)
-    BR = td.Structure(geometry=td.GeometryGroup(geometries=BRs_geo), medium=si)
-
-    # create the separation oxide layer (t_separation dependent)
-    separation_oxide = td.Structure(
-        geometry=td.Box.from_bounds(rmin=(-inf_eff, -inf_eff, -t_separation), rmax=(inf_eff, inf_eff, 0)),
-        medium=sio2,
-    )
-    # create the bottom oxide layer (t_separation dependent)
-    box = td.Structure(
-        geometry=td.Box.from_bounds(rmin=(-inf_eff, -inf_eff, -t_separation - t_box), rmax=(inf_eff, inf_eff, -t_separation)),
-        medium=mat_box,
-    )
-
     # create a box to represent the simulation domain box
     sim_box = td.Box.from_bounds(
-        rmin=(-buffer - wg_l, 0, -t_box - t_separation - buffer - 1),
+        rmin=(-buffer - wg_l, 0, -t_box - t_separation - buffer-1),
         rmax=(l_grating + buffer, 0, t_gc + t_tox + buffer),
     )
+
 
     # construct simulation
     sim = td.Simulation(
@@ -167,10 +153,9 @@ def make_2d_sim(p: float, source_x: float, t_separation: float, br_extra: float 
             slab_waveguide,
             separation_oxide,
             box,
-            BR,
         ],
         sources=[source],
-        monitors=[mode_monitor, monitor_xz],
+        monitors=[mode_monitor,monitor_xz],
         run_time=run_time,
         boundary_spec=td.BoundarySpec(
             x=td.Boundary.pml(),
@@ -181,40 +166,28 @@ def make_2d_sim(p: float, source_x: float, t_separation: float, br_extra: float 
 
     return sim
 
-#region 2D simulation 結果 - sweep t_separation
-sims_sweep = {
-    f"t_sep={t_sep:.3f}": make_2d_sim(p=P, source_x=src_x, t_separation=t_sep)
-    for t_sep in t_sep_list
-}
-
-batch = web.Batch(simulations=sims_sweep)
-batch_results = batch.run(path_dir="data")
-
-# CE vs 波長對比圖
-fig, ax = plt.subplots(tight_layout=True, figsize=(8, 5))
-for t_sep in t_sep_list:
-    key = f"t_sep={t_sep:.3f}"
-    ce = np.abs(batch_results[key]["mode"].amps.sel(direction="-")) ** 2
-    ce = ce.squeeze()
-    best_ce = float(np.max(ce))
-    ax.plot(ldas, ce, label=f"t_sep={t_sep:.3f} um  max={best_ce*1e2:.1f}% ({10*np.log10(best_ce):.2f} dB)")
-
-ax.set_xlabel("Wavelength (um)")
-ax.set_ylabel("Coupling efficiency")
-ax.set_xlim([1.25, 1.35])
-ax.legend(fontsize=8)
-ax.grid()
-ax.set_title(f"t_sep sweep  |  src_x={src_x:.2f} um")
+#region 2D simulation結果
+sim0 = make_2d_sim(p=P, source_x=source_x)
+sim0.plot_eps(y=0, freq=freq0)
 plt.show()
 
-print("=== Sweep 結果 ===")
-print(f"{chr(39)}t_sep{chr(39):>8}  {chr(39)}max CE{chr(39):>10}  {chr(39)}dB{chr(39):>8}")
-print(f"{chr(39)}t_sep{chr(39):>8}  {chr(39)}max CE{chr(39):>10}  {chr(39)}dB{chr(39):>8}")
-for t_sep in t_sep_list:
-    key = f"t_sep={t_sep:.3f}"
-    ce = np.abs(batch_results[key]["mode"].amps.sel(direction="-")) ** 2
-    best_ce = float(np.max(ce))
-    print(f"{t_sep:>8.3f}  {best_ce*1e2:>10.2f}%  {10*np.log10(best_ce):>8.2f}")
+sims_2d = {
+    f"p={P:.2f};source_x={source_x:.2f}": make_2d_sim(p=P, source_x=source_x)}
+
+batch = web.Batch(simulations=sims_2d)
+batch_results = batch.run(path_dir="data")
+
+ce = np.abs(batch_results[f"p={P:.2f};source_x={source_x:.2f}"]["mode"].amps.sel(direction="-"))** 2
+
+plt.plot(ldas, ce)
+plt.xlabel("Wavelength (μm)")
+plt.ylabel("Coupling efficiency")
+plt.xlim([1.25, 1.35])
+plt.grid()
+plt.show()
+
+best_ce = np.max(ce)
+print(f"Optimal coupling efficiency is {best_ce * 1e2:.2f}%, or {10 * np.log10(best_ce):.2f} dB.")
 #endregion
 
 
@@ -242,9 +215,9 @@ for t_sep in t_sep_list:
 #     )
 #     monitor_xz = td.FieldMonitor(
 #         name="xz_cut",
-#         center=(0, 0, 0),
-#         size=(td.inf, 0, td.inf),
-#         freqs=[freq0],
+#         center=(0, 0, 0),  
+#         size=(td.inf, 0, td.inf),               
+#         freqs=[freq0],                      
 #         fields=["Ex", "Ey", "Ez"],
 #     )
 
@@ -294,7 +267,7 @@ for t_sep in t_sep_list:
 #             waveguide_3d
 #         ],
 #         sources=[source],
-#         monitors=[mode_monitor, monitor_xz],
+#         monitors=[mode_monitor,monitor_xz],
 #         run_time=run_time,
 #         symmetry=(0, -1, 0),
 #     )
@@ -311,7 +284,7 @@ for t_sep in t_sep_list:
 
 # plt.plot(ldas, ce_3d, c="red")
 # plt.xlim([1.25, 1.35])
-# plt.xlabel("Wavelength (um)")
+# plt.xlabel("Wavelength (μm)")
 # plt.ylabel("Coupling efficiency")
 # plt.grid()
 # plt.show()
@@ -319,3 +292,4 @@ for t_sep in t_sep_list:
 # best_ce_3d = np.max(ce_3d)
 # print(f"3D Optimal coupling efficiency is {best_ce_3d * 1e2:.2f}%")
 # #endregion
+

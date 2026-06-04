@@ -83,7 +83,7 @@ box = td.Structure(
 # create the silicon substrate layer
 substrate = td.Structure(
     geometry=td.Box.from_bounds(
-        rmin=(-inf_eff, -inf_eff, -inf_eff), rmax=(inf_eff, inf_eff, -t_separation-t_box)
+        rmin=(-inf_eff, -inf_eff, -t_separation-t_box-2), rmax=(inf_eff, inf_eff, -t_separation-t_box)
     ),
     medium=si,
 )
